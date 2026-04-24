@@ -1,0 +1,208 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-08-01/managementGroupDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "17772011482714914104"
+    }
+  },
+  "parameters": {
+    "managedByTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Tenant ID of the managing tenant"
+      }
+    },
+    "managedByName": {
+      "type": "string",
+      "defaultValue": "Managed Cloud Operations",
+      "metadata": {
+        "description": "Display name for the Lighthouse offer"
+      }
+    },
+    "systemPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Object ID of the service principal with permanent Contributor access"
+      }
+    },
+    "readerPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Object ID of the provider group or service principal with permanent Reader access"
+      }
+    },
+    "contributorPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Object ID of the provider group or service principal eligible for PIM Contributor"
+      }
+    },
+    "policyDefinitionName": {
+      "type": "string",
+      "defaultValue": "MC-Deploy-Azure-Lighthouse",
+      "metadata": {
+        "description": "Policy definition name"
+      }
+    },
+    "policyAssignmentName": {
+      "type": "string",
+      "defaultValue": "MC-Deploy-Azure-Lighthouse-MG",
+      "metadata": {
+        "description": "Policy assignment name"
+      }
+    }
+  },
+  "variables": {
+    "authorizations": [
+      {
+        "principalId": "[parameters('systemPrincipalId')]",
+        "principalIdDisplayName": "Managed Cloud Operations Agent",
+        "roleDefinitionId": "b24988ac-6180-42a0-ab88-20f7382dd24c"
+      },
+      {
+        "principalId": "[parameters('readerPrincipalId')]",
+        "principalIdDisplayName": "Managed Cloud Operations (Reader)",
+        "roleDefinitionId": "acdd72a7-3385-48ef-bd42-f606fba81ae7"
+      }
+    ],
+    "eligibleAuthorizations": [
+      {
+        "principalId": "[parameters('contributorPrincipalId')]",
+        "principalIdDisplayName": "Managed Cloud Operations (Contributor)",
+        "roleDefinitionId": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+        "justInTimeAccessPolicy": {
+          "multiFactorAuthProvider": "Azure",
+          "maximumActivationDuration": "PT8H",
+          "managedByTenantApprovers": []
+        }
+      }
+    ]
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Authorization/policyDefinitions",
+      "apiVersion": "2021-06-01",
+      "name": "[parameters('policyDefinitionName')]",
+      "properties": {
+        "displayName": "Deploy Azure Lighthouse delegation",
+        "policyType": "Custom",
+        "mode": "All",
+        "parameters": {
+          "managedByTenantId": {
+            "type": "String"
+          },
+          "managedByName": {
+            "type": "String"
+          },
+          "authorizations": {
+            "type": "Array"
+          },
+          "eligibleAuthorizations": {
+            "type": "Array"
+          }
+        },
+        "policyRule": {
+          "if": {
+            "field": "type",
+            "equals": "Microsoft.Resources/subscriptions"
+          },
+          "then": {
+            "effect": "deployIfNotExists",
+            "details": {
+              "type": "Microsoft.ManagedServices/registrationAssignments",
+              "deploymentScope": "subscription",
+              "deployment": {
+                "properties": {
+                  "mode": "Incremental",
+                  "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                      "managedByTenantId": {
+                        "type": "string"
+                      },
+                      "managedByName": {
+                        "type": "string"
+                      },
+                      "authorizations": {
+                        "type": "array"
+                      },
+                      "eligibleAuthorizations": {
+                        "type": "array"
+                      }
+                    },
+                    "resources": [
+                      {
+                        "type": "Microsoft.ManagedServices/registrationDefinitions",
+                        "apiVersion": "2022-10-01",
+                        "name": "[[guid(parameters('managedByTenantId'), parameters('managedByName'))]",
+                        "properties": {
+                          "description": "Delegated Azure management via Azure Lighthouse",
+                          "managedByTenantId": "[[parameters('managedByTenantId')]",
+                          "registrationDefinitionName": "[[parameters('managedByName')]",
+                          "authorizations": "[[parameters('authorizations')]",
+                          "eligibleAuthorizations": "[[parameters('eligibleAuthorizations')]"
+                        }
+                      },
+                      {
+                        "type": "Microsoft.ManagedServices/registrationAssignments",
+                        "apiVersion": "2022-10-01",
+                        "name": "[[guid(subscription().subscriptionId, parameters('managedByName'))]",
+                        "properties": {
+                          "registrationDefinitionId": "[[resourceId('Microsoft.ManagedServices/registrationDefinitions', guid(parameters('managedByTenantId'), parameters('managedByName')))]"
+                        }
+                      }
+                    ]
+                  },
+                  "parameters": {
+                    "managedByTenantId": {
+                      "value": "[parameters('managedByTenantId')]"
+                    },
+                    "managedByName": {
+                      "value": "[parameters('managedByName')]"
+                    },
+                    "authorizations": {
+                      "value": "[variables('authorizations')]"
+                    },
+                    "eligibleAuthorizations": {
+                      "value": "[variables('eligibleAuthorizations')]"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2021-06-01",
+      "name": "[parameters('policyAssignmentName')]",
+      "properties": {
+        "displayName": "Deploy Azure Lighthouse to all subscriptions",
+        "policyDefinitionId": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', parameters('policyDefinitionName'))]",
+        "parameters": {
+          "managedByTenantId": {
+            "value": "[parameters('managedByTenantId')]"
+          },
+          "managedByName": {
+            "value": "[parameters('managedByName')]"
+          },
+          "authorizations": {
+            "value": "[variables('authorizations')]"
+          },
+          "eligibleAuthorizations": {
+            "value": "[variables('eligibleAuthorizations')]"
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', parameters('policyDefinitionName'))]"
+      ]
+    }
+  ]
+}
