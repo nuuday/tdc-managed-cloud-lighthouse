@@ -4,40 +4,62 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.42.1.51946",
-      "templateHash": "17772011482714914104"
+      "version": "0.43.8.12551",
+      "templateHash": "7190463740418606807"
     }
   },
   "parameters": {
-    "managedByTenantId": {
+    "managingTenantId": {
       "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
       "metadata": {
         "description": "Tenant ID of the managing tenant"
       }
     },
-    "managedByName": {
+    "lighthouseOfferName": {
       "type": "string",
       "defaultValue": "Managed Cloud Operations",
       "metadata": {
         "description": "Display name for the Lighthouse offer"
       }
     },
-    "systemPrincipalId": {
+    "location": {
       "type": "string",
+      "defaultValue": "denmarkeast",
       "metadata": {
-        "description": "Object ID of the service principal with permanent Contributor access"
+        "description": "Default location used for resources or deployments requiring a location parameter"
       }
     },
-    "readerPrincipalId": {
+    "version": {
       "type": "string",
+      "defaultValue": "1.0.0",
       "metadata": {
-        "description": "Object ID of the provider group or service principal with permanent Reader access"
+        "description": "The version number of the lighthouse deployment template"
       }
     },
-    "contributorPrincipalId": {
+    "systemAgentPrincipalId": {
       "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
       "metadata": {
-        "description": "Object ID of the provider group or service principal eligible for PIM Contributor"
+        "description": "Object ID of the service principal that will be executing all actions through Azure lighthouse"
+      }
+    },
+    "supportTeamPrincipalId": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "metadata": {
+        "description": "Object ID of the security group or service principal with permanent Reader access for support purposes"
+      }
+    },
+    "specialistTeamPrincipalId": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "metadata": {
+        "description": "Object ID of the security group or service principal eligible for additional PIM-controlled access for support purposes"
       }
     },
     "policyDefinitionName": {
@@ -56,45 +78,90 @@
     }
   },
   "variables": {
+    "roleIds": {
+      "reader": "acdd72a7-3385-48ef-bd42-f606fba81ae7",
+      "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+      "costManagementContributor": "434105ed-43f6-45c7-a02f-909b2ba83430",
+      "resourcePolicyContributor": "36243c78-bf99-498c-9df9-86d9f8d28608",
+      "userAccessAdministrator": "18d7d88d-d35e-4fb5-a5c3-7773c20a72d9"
+    },
+    "principalNames": {
+      "supportTeam": "Managed Cloud Operations Support",
+      "specialistTeam": "Managed Cloud Operations Specialist",
+      "systemAgent": "Managed Cloud Operations Agent"
+    },
     "authorizations": [
       {
-        "principalId": "[parameters('systemPrincipalId')]",
-        "principalIdDisplayName": "Managed Cloud Operations Agent",
-        "roleDefinitionId": "b24988ac-6180-42a0-ab88-20f7382dd24c"
+        "principalId": "[parameters('systemAgentPrincipalId')]",
+        "principalIdDisplayName": "[format('{0} (Contributor)', variables('principalNames').systemAgent)]",
+        "roleDefinitionId": "[variables('roleIds').contributor]"
       },
       {
-        "principalId": "[parameters('readerPrincipalId')]",
-        "principalIdDisplayName": "Managed Cloud Operations (Reader)",
-        "roleDefinitionId": "acdd72a7-3385-48ef-bd42-f606fba81ae7"
+        "principalId": "[parameters('systemAgentPrincipalId')]",
+        "principalIdDisplayName": "[format('{0} (Resource Policy Contributor)', variables('principalNames').systemAgent)]",
+        "roleDefinitionId": "[variables('roleIds').resourcePolicyContributor]"
+      },
+      {
+        "principalId": "[parameters('systemAgentPrincipalId')]",
+        "principalIdDisplayName": "[format('{0} (Cost Management Contributor)', variables('principalNames').systemAgent)]",
+        "roleDefinitionId": "[variables('roleIds').costManagementContributor]"
+      },
+      {
+        "principalId": "[parameters('supportTeamPrincipalId')]",
+        "principalIdDisplayName": "[format('{0} (Reader)', variables('principalNames').supportTeam)]",
+        "roleDefinitionId": "[variables('roleIds').reader]"
+      },
+      {
+        "principalId": "[parameters('specialistTeamPrincipalId')]",
+        "principalIdDisplayName": "[format('{0} (Reader)', variables('principalNames').specialistTeam)]",
+        "roleDefinitionId": "[variables('roleIds').reader]"
       }
     ],
     "eligibleAuthorizations": [
       {
-        "principalId": "[parameters('contributorPrincipalId')]",
-        "principalIdDisplayName": "Managed Cloud Operations (Contributor)",
-        "roleDefinitionId": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+        "principalId": "[parameters('specialistTeamPrincipalId')]",
+        "principalIdDisplayName": "[format('{0} (Contributor)', variables('principalNames').specialistTeam)]",
+        "roleDefinitionId": "[variables('roleIds').contributor]",
         "justInTimeAccessPolicy": {
           "multiFactorAuthProvider": "Azure",
           "maximumActivationDuration": "PT8H",
           "managedByTenantApprovers": []
         }
+      },
+      {
+        "principalId": "[parameters('specialistTeamPrincipalId')]",
+        "principalIdDisplayName": "[format('{0} (User Access Administrator)', variables('principalNames').specialistTeam)]",
+        "roleDefinitionId": "[variables('roleIds').userAccessAdministrator]",
+        "justInTimeAccessPolicy": {
+          "multiFactorAuthProvider": "Azure",
+          "maximumActivationDuration": "PT1H",
+          "managedByTenantApprovers": []
+        }
       }
-    ]
+    ],
+    "commonMetadata": {
+      "category": "Lighthouse",
+      "version": "[parameters('version')]",
+      "owner": "[variables('principalNames').systemAgent]",
+      "createdBy": "Bicep",
+      "deployment": "ManagementGroup"
+    }
   },
   "resources": [
     {
       "type": "Microsoft.Authorization/policyDefinitions",
-      "apiVersion": "2021-06-01",
+      "apiVersion": "2025-11-01",
       "name": "[parameters('policyDefinitionName')]",
       "properties": {
         "displayName": "Deploy Azure Lighthouse delegation",
         "policyType": "Custom",
         "mode": "All",
+        "metadata": "[union(variables('commonMetadata'), createObject('description', 'Ensures all subscriptions are onboarded to Azure Lighthouse'))]",
         "parameters": {
-          "managedByTenantId": {
+          "managingTenantId": {
             "type": "String"
           },
-          "managedByName": {
+          "lighthouseOfferName": {
             "type": "String"
           },
           "authorizations": {
@@ -102,6 +169,9 @@
           },
           "eligibleAuthorizations": {
             "type": "Array"
+          },
+          "location": {
+            "type": "String"
           }
         },
         "policyRule": {
@@ -113,18 +183,35 @@
             "effect": "deployIfNotExists",
             "details": {
               "type": "Microsoft.ManagedServices/registrationAssignments",
+              "roleDefinitionIds": [
+                "[format('/providers/Microsoft.Authorization/roleDefinitions/{0}', variables('roleIds').contributor)]",
+                "[format('/providers/Microsoft.Authorization/roleDefinitions/{0}', variables('roleIds').userAccessAdministrator)]"
+              ],
+              "existenceCondition": {
+                "allOf": [
+                  {
+                    "field": "Microsoft.ManagedServices/registrationAssignments/registrationDefinitionId",
+                    "equals": "[[resourceId('Microsoft.ManagedServices/registrationDefinitions', guid(parameters('managingTenantId'), parameters('lighthouseOfferName')))]"
+                  },
+                  {
+                    "field": "name",
+                    "equals": "[[guid(subscription().subscriptionId, parameters('lighthouseOfferName'))]"
+                  }
+                ]
+              },
               "deploymentScope": "subscription",
               "deployment": {
+                "location": "[[parameters('location')]",
                 "properties": {
                   "mode": "Incremental",
                   "template": {
                     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
                     "contentVersion": "1.0.0.0",
                     "parameters": {
-                      "managedByTenantId": {
+                      "managingTenantId": {
                         "type": "string"
                       },
-                      "managedByName": {
+                      "lighthouseOfferName": {
                         "type": "string"
                       },
                       "authorizations": {
@@ -138,11 +225,11 @@
                       {
                         "type": "Microsoft.ManagedServices/registrationDefinitions",
                         "apiVersion": "2022-10-01",
-                        "name": "[[guid(parameters('managedByTenantId'), parameters('managedByName'))]",
+                        "name": "[[guid(parameters('managingTenantId'), parameters('lighthouseOfferName'))]",
                         "properties": {
                           "description": "Delegated Azure management via Azure Lighthouse",
-                          "managedByTenantId": "[[parameters('managedByTenantId')]",
-                          "registrationDefinitionName": "[[parameters('managedByName')]",
+                          "managedByTenantId": "[[parameters('managingTenantId')]",
+                          "registrationDefinitionName": "[[parameters('lighthouseOfferName')]",
                           "authorizations": "[[parameters('authorizations')]",
                           "eligibleAuthorizations": "[[parameters('eligibleAuthorizations')]"
                         }
@@ -150,25 +237,28 @@
                       {
                         "type": "Microsoft.ManagedServices/registrationAssignments",
                         "apiVersion": "2022-10-01",
-                        "name": "[[guid(subscription().subscriptionId, parameters('managedByName'))]",
+                        "name": "[[guid(subscription().subscriptionId, parameters('lighthouseOfferName'))]",
                         "properties": {
-                          "registrationDefinitionId": "[[resourceId('Microsoft.ManagedServices/registrationDefinitions', guid(parameters('managedByTenantId'), parameters('managedByName')))]"
+                          "registrationDefinitionId": "[[resourceId('Microsoft.ManagedServices/registrationDefinitions', guid(parameters('managingTenantId'), parameters('lighthouseOfferName')))]"
                         }
                       }
                     ]
                   },
                   "parameters": {
-                    "managedByTenantId": {
-                      "value": "[parameters('managedByTenantId')]"
+                    "managingTenantId": {
+                      "value": "[parameters('managingTenantId')]"
                     },
-                    "managedByName": {
-                      "value": "[parameters('managedByName')]"
+                    "lighthouseOfferName": {
+                      "value": "[parameters('lighthouseOfferName')]"
                     },
                     "authorizations": {
                       "value": "[variables('authorizations')]"
                     },
                     "eligibleAuthorizations": {
                       "value": "[variables('eligibleAuthorizations')]"
+                    },
+                    "location": {
+                      "value": "[parameters('location')]"
                     }
                   }
                 }
@@ -180,28 +270,64 @@
     },
     {
       "type": "Microsoft.Authorization/policyAssignments",
-      "apiVersion": "2021-06-01",
+      "apiVersion": "2025-11-01",
       "name": "[parameters('policyAssignmentName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
       "properties": {
         "displayName": "Deploy Azure Lighthouse to all subscriptions",
+        "description": "Automatically deploys Azure Lighthouse delegation to all subscriptions under this management group.",
         "policyDefinitionId": "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', parameters('policyDefinitionName'))]",
+        "enforcementMode": "Default",
+        "metadata": "[union(variables('commonMetadata'), createObject('description', 'Automatically deploys Azure Lighthouse delegation to all subscriptions under this management group'))]",
         "parameters": {
-          "managedByTenantId": {
-            "value": "[parameters('managedByTenantId')]"
+          "managingTenantId": {
+            "value": "[parameters('managingTenantId')]"
           },
-          "managedByName": {
-            "value": "[parameters('managedByName')]"
+          "lighthouseOfferName": {
+            "value": "[parameters('lighthouseOfferName')]"
           },
           "authorizations": {
             "value": "[variables('authorizations')]"
           },
           "eligibleAuthorizations": {
             "value": "[variables('eligibleAuthorizations')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
           }
         }
       },
       "dependsOn": [
         "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyDefinitions', parameters('policyDefinitionName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(managementGroup().id, extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', parameters('policyAssignmentName')), variables('roleIds').contributor)]",
+      "properties": {
+        "roleDefinitionId": "[format('{0}/providers/Microsoft.Authorization/roleDefinitions/{1}', managementGroup().id, variables('roleIds').contributor)]",
+        "principalId": "[reference(extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', parameters('policyAssignmentName')), '2025-11-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', parameters('policyAssignmentName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(managementGroup().id, extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', parameters('policyAssignmentName')), variables('roleIds').userAccessAdministrator)]",
+      "properties": {
+        "roleDefinitionId": "[format('{0}/providers/Microsoft.Authorization/roleDefinitions/{1}', managementGroup().id, variables('roleIds').userAccessAdministrator)]",
+        "principalId": "[reference(extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', parameters('policyAssignmentName')), '2025-11-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[extensionResourceId(managementGroup().id, 'Microsoft.Authorization/policyAssignments', parameters('policyAssignmentName'))]"
       ]
     }
   ]
