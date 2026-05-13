@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Get directory of the executing script
 scriptDir=$(cd "$(dirname "$0")" || exit 1; pwd)
