@@ -33,7 +33,8 @@ param specialistTeamPrincipalId string
 param policyDefinitionName string = 'MC-Deploy-Azure-Lighthouse'
 
 @description('Policy assignment name')
-param policyAssignmentName string = 'MC-Deploy-Azure-Lighthouse-MG'
+@maxLength(24) // Azure limit for policy assignments at management-group scope
+param policyAssignmentName string = 'MC-Deploy-Lighthouse'
 
 var roleIds = {
   // Used to grant permanent Reader access to the provider group or service principal, ensuring visibility of the subscription and its resources in the Azure portal and APIs.
@@ -54,7 +55,17 @@ var principalNames = {
   systemAgent: 'Managed Cloud Operations Agent'
 }
 
-var authorizations = [
+// Lighthouse rejects duplicate authorizations (same principal and role), so the specialist
+// team's Reader is only added when it is a different group from the support team.
+var authorizations = concat(baseAuthorizations, specialistTeamPrincipalId == supportTeamPrincipalId ? [] : [
+  {
+    principalId: specialistTeamPrincipalId
+    principalIdDisplayName: '${principalNames.specialistTeam} (Reader)'
+    roleDefinitionId: roleIds.reader
+  }
+])
+
+var baseAuthorizations = [
   // System agent
   // - Contributor role is required to onboard the subscription to Lighthouse and manage resources within it.
   // - Resource Policy Contributor is required to assign resource policies at the subscription scope.
@@ -80,12 +91,6 @@ var authorizations = [
     principalIdDisplayName: '${principalNames.supportTeam} (Reader)'
     roleDefinitionId: roleIds.reader
   }
-  // Specialist team
-  {
-    principalId: specialistTeamPrincipalId
-    principalIdDisplayName: '${principalNames.specialistTeam} (Reader)'
-    roleDefinitionId: roleIds.reader
-  }
 ]
 
 var eligibleAuthorizations = [
@@ -100,17 +105,8 @@ var eligibleAuthorizations = [
       managedByTenantApprovers: []
     }
   }
-  {
-    principalId: specialistTeamPrincipalId
-    principalIdDisplayName: '${principalNames.specialistTeam} (User Access Administrator)'
-    roleDefinitionId: roleIds.userAccessAdministrator
-    justInTimeAccessPolicy: {
-      multiFactorAuthProvider: 'Azure'
-      maximumActivationDuration: 'PT1H'
-      // When empty, there is no approval requirement
-      managedByTenantApprovers: []
-    }
-  }
+  // User Access Administrator cannot be an eligible authorization: Lighthouse rejects Owner,
+  // User Access Administrator and Role Based Access Control Administrator as eligible roles.
 ]
 
 var commonMetadata = {
@@ -135,7 +131,6 @@ resource lighthousePolicy 'Microsoft.Authorization/policyDefinitions@2025-11-01'
       lighthouseOfferName: { type: 'String' }
       authorizations: { type: 'Array' }
       eligibleAuthorizations: { type: 'Array' }
-      location: { type: 'String' }
     }
     policyRule: {
       if: {
@@ -156,7 +151,8 @@ resource lighthousePolicy 'Microsoft.Authorization/policyDefinitions@2025-11-01'
               // Checks if a registration assignment exists for the subscription with the expected registration definition ID and name.
               {
                 field: 'Microsoft.ManagedServices/registrationAssignments/registrationDefinitionId'
-                equals: '[resourceId(\'Microsoft.ManagedServices/registrationDefinitions\', guid(parameters(\'managingTenantId\'), parameters(\'lighthouseOfferName\')))]'
+                // Policy does not support resourceId(), so the id is built with concat().
+                equals: '[concat(\'/subscriptions/\', subscription().subscriptionId, \'/providers/Microsoft.ManagedServices/registrationDefinitions/\', guid(parameters(\'managingTenantId\'), parameters(\'lighthouseOfferName\')))]'
               }
               // Ensures the registration assignment is named according to the convention, which includes the subscription ID and lighthouseOfferName, to prevent conflicts and ensure idempotency.              
               {
@@ -167,7 +163,7 @@ resource lighthousePolicy 'Microsoft.Authorization/policyDefinitions@2025-11-01'
           }
           deploymentScope: 'subscription'
           deployment: {
-            location: '[parameters(\'location\')]'
+            location: location
             properties: {
               mode: 'Incremental'
               template: {
@@ -196,18 +192,23 @@ resource lighthousePolicy 'Microsoft.Authorization/policyDefinitions@2025-11-01'
                     type: 'Microsoft.ManagedServices/registrationAssignments'
                     apiVersion: '2022-10-01'
                     name: '[guid(subscription().subscriptionId, parameters(\'lighthouseOfferName\'))]'
+                    // The definition id below is a plain string, so ARM needs the dependency spelled out.
+                    dependsOn: [
+                      '[guid(parameters(\'managingTenantId\'), parameters(\'lighthouseOfferName\'))]'
+                    ]
                     properties: {
-                      registrationDefinitionId: '[resourceId(\'Microsoft.ManagedServices/registrationDefinitions\', guid(parameters(\'managingTenantId\'), parameters(\'lighthouseOfferName\')))]'
+                      registrationDefinitionId: '[concat(\'/subscriptions/\', subscription().subscriptionId, \'/providers/Microsoft.ManagedServices/registrationDefinitions/\', guid(parameters(\'managingTenantId\'), parameters(\'lighthouseOfferName\')))]'
                     }
                   }
                 ]
               }
+              // Reference the policy parameters rather than inlining the values: Policy rejects a
+              // definition whose parameters are not used in its rule (UnusedPolicyParameters).
               parameters: {
-                managingTenantId: { value: managingTenantId }
-                lighthouseOfferName: { value: lighthouseOfferName }
-                authorizations: { value: authorizations }
-                eligibleAuthorizations: { value: eligibleAuthorizations }
-                location: { value: location }
+                managingTenantId: { value: '[parameters(\'managingTenantId\')]' }
+                lighthouseOfferName: { value: '[parameters(\'lighthouseOfferName\')]' }
+                authorizations: { value: '[parameters(\'authorizations\')]' }
+                eligibleAuthorizations: { value: '[parameters(\'eligibleAuthorizations\')]' }
               }
             }
           }
@@ -236,7 +237,6 @@ resource lighthouseAssignment 'Microsoft.Authorization/policyAssignments@2025-11
       lighthouseOfferName: { value: lighthouseOfferName }
       authorizations: { value: authorizations }
       eligibleAuthorizations: { value: eligibleAuthorizations }
-      location: { value: location }
     }
   }
 }

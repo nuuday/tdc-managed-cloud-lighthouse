@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.43.8.12551",
-      "templateHash": "7190463740418606807"
+      "version": "0.41.2.15936",
+      "templateHash": "2825521161011189204"
     }
   },
   "parameters": {
@@ -71,7 +71,8 @@
     },
     "policyAssignmentName": {
       "type": "string",
-      "defaultValue": "MC-Deploy-Azure-Lighthouse-MG",
+      "defaultValue": "MC-Deploy-Lighthouse",
+      "maxLength": 24,
       "metadata": {
         "description": "Policy assignment name"
       }
@@ -90,7 +91,8 @@
       "specialistTeam": "Managed Cloud Operations Specialist",
       "systemAgent": "Managed Cloud Operations Agent"
     },
-    "authorizations": [
+    "authorizations": "[concat(variables('baseAuthorizations'), if(equals(parameters('specialistTeamPrincipalId'), parameters('supportTeamPrincipalId')), createArray(), createArray(createObject('principalId', parameters('specialistTeamPrincipalId'), 'principalIdDisplayName', format('{0} (Reader)', variables('principalNames').specialistTeam), 'roleDefinitionId', variables('roleIds').reader))))]",
+    "baseAuthorizations": [
       {
         "principalId": "[parameters('systemAgentPrincipalId')]",
         "principalIdDisplayName": "[format('{0} (Contributor)', variables('principalNames').systemAgent)]",
@@ -110,11 +112,6 @@
         "principalId": "[parameters('supportTeamPrincipalId')]",
         "principalIdDisplayName": "[format('{0} (Reader)', variables('principalNames').supportTeam)]",
         "roleDefinitionId": "[variables('roleIds').reader]"
-      },
-      {
-        "principalId": "[parameters('specialistTeamPrincipalId')]",
-        "principalIdDisplayName": "[format('{0} (Reader)', variables('principalNames').specialistTeam)]",
-        "roleDefinitionId": "[variables('roleIds').reader]"
       }
     ],
     "eligibleAuthorizations": [
@@ -125,16 +122,6 @@
         "justInTimeAccessPolicy": {
           "multiFactorAuthProvider": "Azure",
           "maximumActivationDuration": "PT8H",
-          "managedByTenantApprovers": []
-        }
-      },
-      {
-        "principalId": "[parameters('specialistTeamPrincipalId')]",
-        "principalIdDisplayName": "[format('{0} (User Access Administrator)', variables('principalNames').specialistTeam)]",
-        "roleDefinitionId": "[variables('roleIds').userAccessAdministrator]",
-        "justInTimeAccessPolicy": {
-          "multiFactorAuthProvider": "Azure",
-          "maximumActivationDuration": "PT1H",
           "managedByTenantApprovers": []
         }
       }
@@ -169,9 +156,6 @@
           },
           "eligibleAuthorizations": {
             "type": "Array"
-          },
-          "location": {
-            "type": "String"
           }
         },
         "policyRule": {
@@ -191,7 +175,7 @@
                 "allOf": [
                   {
                     "field": "Microsoft.ManagedServices/registrationAssignments/registrationDefinitionId",
-                    "equals": "[[resourceId('Microsoft.ManagedServices/registrationDefinitions', guid(parameters('managingTenantId'), parameters('lighthouseOfferName')))]"
+                    "equals": "[[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.ManagedServices/registrationDefinitions/', guid(parameters('managingTenantId'), parameters('lighthouseOfferName')))]"
                   },
                   {
                     "field": "name",
@@ -201,7 +185,7 @@
               },
               "deploymentScope": "subscription",
               "deployment": {
-                "location": "[[parameters('location')]",
+                "location": "[parameters('location')]",
                 "properties": {
                   "mode": "Incremental",
                   "template": {
@@ -238,27 +222,27 @@
                         "type": "Microsoft.ManagedServices/registrationAssignments",
                         "apiVersion": "2022-10-01",
                         "name": "[[guid(subscription().subscriptionId, parameters('lighthouseOfferName'))]",
+                        "dependsOn": [
+                          "[[guid(parameters('managingTenantId'), parameters('lighthouseOfferName'))]"
+                        ],
                         "properties": {
-                          "registrationDefinitionId": "[[resourceId('Microsoft.ManagedServices/registrationDefinitions', guid(parameters('managingTenantId'), parameters('lighthouseOfferName')))]"
+                          "registrationDefinitionId": "[[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.ManagedServices/registrationDefinitions/', guid(parameters('managingTenantId'), parameters('lighthouseOfferName')))]"
                         }
                       }
                     ]
                   },
                   "parameters": {
                     "managingTenantId": {
-                      "value": "[parameters('managingTenantId')]"
+                      "value": "[[parameters('managingTenantId')]"
                     },
                     "lighthouseOfferName": {
-                      "value": "[parameters('lighthouseOfferName')]"
+                      "value": "[[parameters('lighthouseOfferName')]"
                     },
                     "authorizations": {
-                      "value": "[variables('authorizations')]"
+                      "value": "[[parameters('authorizations')]"
                     },
                     "eligibleAuthorizations": {
-                      "value": "[variables('eligibleAuthorizations')]"
-                    },
-                    "location": {
-                      "value": "[parameters('location')]"
+                      "value": "[[parameters('eligibleAuthorizations')]"
                     }
                   }
                 }
@@ -294,9 +278,6 @@
           },
           "eligibleAuthorizations": {
             "value": "[variables('eligibleAuthorizations')]"
-          },
-          "location": {
-            "value": "[parameters('location')]"
           }
         }
       },
